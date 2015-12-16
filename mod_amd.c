@@ -378,12 +378,9 @@ SWITCH_STANDARD_APP(amd_start_function)
 		}
 
 		if (read_frame->samples == 0) {
-			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "AMD: in read_frame->samples\n");
 			if (sample_count_limit) {
 				sample_count_limit -= raw_codec.implementation->samples_per_packet;
 				if (sample_count_limit <= 0) {
-					switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "AMD: Timeout\n");
-
 					switch_channel_set_variable(channel, "amd_result", "NOTSURE");
 					switch_channel_set_variable(channel, "amd_cause", "TOOLONG");
 					break;
