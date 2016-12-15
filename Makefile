@@ -22,5 +22,5 @@ clean:
 
 .PHONY: install
 install: $(MODNAME)
-	install -d $(DESTDIR)/usr/lib/freeswitch/mod
-	install $(MODNAME) $(DESTDIR)/usr/lib/freeswitch/mod
+	install -d $(DESTDIR)/usr/local/freeswitch/mod
+	install $(MODNAME) $(DESTDIR)/usr/local/freeswitch/mod

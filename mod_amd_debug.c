@@ -8,7 +8,7 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_amd_load);
 SWITCH_MODULE_DEFINITION(mod_amd, mod_amd_load, mod_amd_shutdown, NULL);
 SWITCH_STANDARD_APP(amd_start_function);
 
-typedef struct {
+static struct {
 	uint32_t initial_silence;
 	uint32_t greeting;
 	uint32_t after_greeting_silence;
@@ -16,11 +16,9 @@ typedef struct {
 	uint32_t minimum_word_length;
 	uint32_t between_words_silence;
 	uint32_t maximum_number_of_words;
-	uint32_t maximum_word_length;
 	uint32_t silence_threshold;
-} amd_params_t;
-
-static amd_params_t globals;
+	uint32_t maximum_word_length;
+} globals;
 
 static switch_xml_config_item_t instructions[] = {
 	SWITCH_CONFIG_ITEM(
@@ -150,7 +148,6 @@ typedef struct {
 	const switch_core_session_t *session;
 	switch_channel_t *channel;
 	amd_vad_state_t state;
-	amd_params_t params;
 	uint32_t frame_ms;
 
 	uint32_t silence_duration;
@@ -161,23 +158,27 @@ typedef struct {
 	uint32_t in_greeting:1;
 } amd_vad_t;
 
-static amd_frame_classifier classify_frame(uint32_t silence_threshold, const switch_frame_t *f, const switch_codec_implementation_t *codec)
+static amd_frame_classifier classify_frame(amd_vad_t *vad, const switch_frame_t *f, const switch_codec_implementation_t *codec)
 {
 	int16_t *audio = f->data;
 	uint32_t score, count, j;
 	double energy;
 	int divisor;
 
+	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(vad->session), SWITCH_LOG_DEBUG, "AMD: in classify_frame\n");
+
 	divisor = codec->actual_samples_per_second / 8000;
 
 	for (energy = 0, j = 0, count = 0; count < f->samples; count++) {
+		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(vad->session), SWITCH_LOG_DEBUG, "AMD: in energy\n");
 		energy += abs(audio[j++]);
 		j += codec->number_of_channels;
 	}
 
 	score = (uint32_t) (energy / (f->samples / divisor));
+	switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(vad->session), SWITCH_LOG_DEBUG, "AMD: in score\n");
 
-	if (score >= silence_threshold) {
+	if (score >= globals.silence_threshold) {
 		return VOICED;
 	}
 
@@ -188,7 +189,7 @@ static switch_bool_t amd_handle_silence_frame(amd_vad_t *vad, const switch_frame
 {
 	vad->silence_duration += vad->frame_ms;
 
-	if (vad->silence_duration >= vad->params.between_words_silence) {
+	if (vad->silence_duration >= globals.between_words_silence) {
 		if (vad->state != VAD_STATE_IN_SILENCE) {
 			switch_log_printf(
 				SWITCH_CHANNEL_SESSION_LOG(vad->session),
@@ -200,26 +201,26 @@ static switch_bool_t amd_handle_silence_frame(amd_vad_t *vad, const switch_frame
 		vad->voice_duration = 0;
 	}
 
-	if (vad->in_initial_silence && vad->silence_duration >= vad->params.initial_silence) {
+	if (vad->in_initial_silence && vad->silence_duration >= globals.initial_silence) {
 		switch_log_printf(
 			SWITCH_CHANNEL_SESSION_LOG(vad->session),
 			SWITCH_LOG_DEBUG,
 			"AMD: MACHINE (silence_duration: %d, initial_silence: %d)\n",
 			vad->silence_duration,
-			vad->params.initial_silence);
+			globals.initial_silence);
 
 		switch_channel_set_variable(vad->channel, "amd_result", "MACHINE");
 		switch_channel_set_variable(vad->channel, "amd_cause", "INITIALSILENCE");
 		return SWITCH_TRUE;
 	}
 
-	if (vad->silence_duration >= vad->params.after_greeting_silence && vad->in_greeting) {
+	if (vad->silence_duration >= globals.after_greeting_silence && vad->in_greeting) {
 		switch_log_printf(
 			SWITCH_CHANNEL_SESSION_LOG(vad->session),
 			SWITCH_LOG_DEBUG,
 			"AMD: HUMAN (silence_duration: %d, after_greeting_silence: %d)\n",
 			vad->silence_duration,
-			vad->params.after_greeting_silence);
+			globals.after_greeting_silence);
 
 		switch_channel_set_variable(vad->channel, "amd_result", "HUMAN");
 		switch_channel_set_variable(vad->channel, "amd_cause", "SILENCEAFTERGREETING");
@@ -233,7 +234,7 @@ static switch_bool_t amd_handle_voiced_frame(amd_vad_t *vad, const switch_frame_
 {
 	vad->voice_duration += vad->frame_ms;
 
-	if (vad->voice_duration >= vad->params.minimum_word_length && vad->state == VAD_STATE_IN_SILENCE) {
+	if (vad->voice_duration >= globals.minimum_word_length && vad->state == VAD_STATE_IN_SILENCE) {
 		vad->words++;
 
 		switch_log_printf(
@@ -245,46 +246,46 @@ static switch_bool_t amd_handle_voiced_frame(amd_vad_t *vad, const switch_frame_
 		vad->state = VAD_STATE_IN_WORD;
 	}
 
-	if (vad->voice_duration >= vad->params.maximum_word_length) {
+	if (vad->voice_duration >= globals.maximum_word_length) {
 		switch_log_printf(
 			SWITCH_CHANNEL_SESSION_LOG(vad->session),
 			SWITCH_LOG_DEBUG,
 			"AMD: MACHINE (voice_duration: %d, maximum_word_length: %d)\n",
 			vad->voice_duration,
-			vad->params.maximum_word_length);
+			globals.maximum_word_length);
 
 		switch_channel_set_variable(vad->channel, "amd_result", "MACHINE");
 		switch_channel_set_variable(vad->channel, "amd_cause", "MAXWORDLENGTH");
 		return SWITCH_TRUE;
 	}
 
-	if (vad->words >= vad->params.maximum_number_of_words) {
+	if (vad->words >= globals.maximum_number_of_words) {
 		switch_log_printf(
 			SWITCH_CHANNEL_SESSION_LOG(vad->session),
 			SWITCH_LOG_DEBUG,
 			"AMD: MACHINE (words: %d, maximum_number_of_words: %d)\n",
 			vad->words,
-			vad->params.maximum_number_of_words);
+			globals.maximum_number_of_words);
 
 		switch_channel_set_variable(vad->channel, "amd_result", "MACHINE");
 		switch_channel_set_variable(vad->channel, "amd_cause", "MAXWORDS");
 		return SWITCH_TRUE;
 	}
 
-	if (vad->in_greeting && vad->voice_duration >= vad->params.greeting) {
+	if (vad->in_greeting && vad->voice_duration >= globals.greeting) {
 		switch_log_printf(
 			SWITCH_CHANNEL_SESSION_LOG(vad->session),
 			SWITCH_LOG_DEBUG,
 			"AMD: MACHINE (voice_duration: %d, greeting: %d)\n",
 			vad->voice_duration,
-			vad->params.greeting);
+			globals.greeting);
 
 		switch_channel_set_variable(vad->channel, "amd_result", "MACHINE");
 		switch_channel_set_variable(vad->channel, "amd_cause", "LONGGREETING");
 		return SWITCH_TRUE;
 	}
 
-	if (vad->voice_duration >= vad->params.minimum_word_length) {
+	if (vad->voice_duration >= globals.minimum_word_length) {
 		if (vad->silence_duration) {
 			switch_log_printf(
 				SWITCH_CHANNEL_SESSION_LOG(vad->session),
@@ -296,7 +297,7 @@ static switch_bool_t amd_handle_voiced_frame(amd_vad_t *vad, const switch_frame_
 		vad->silence_duration = 0;
 	}
 
-	if (vad->voice_duration >= vad->params.minimum_word_length && !vad->in_greeting) {
+	if (vad->voice_duration >= globals.minimum_word_length && !vad->in_greeting) {
 		if (vad->silence_duration) {
 			switch_log_printf(
 				SWITCH_CHANNEL_SESSION_LOG(vad->session),
@@ -320,10 +321,9 @@ SWITCH_STANDARD_APP(amd_start_function)
 	switch_codec_implementation_t read_impl = { 0 };
 	switch_frame_t *read_frame;
 	switch_status_t status;
+	uint32_t timeout_ms = globals.total_analysis_time;
 	int32_t sample_count_limit;
 	switch_bool_t complete = SWITCH_FALSE;
-	char *arg = (char *) data;
-	char delim = ' ';
 
 	amd_vad_t vad = { 0 };
 
@@ -331,7 +331,6 @@ SWITCH_STANDARD_APP(amd_start_function)
 		return;
 	}
 
-	vad.params = globals;
 	vad.channel = channel;
 	vad.session = session;
 	vad.state = VAD_STATE_IN_WORD;
@@ -342,79 +341,10 @@ SWITCH_STANDARD_APP(amd_start_function)
 	vad.in_greeting = 0;
 	vad.words = 0;
 
-	/* Start: parsing argument(s) */
-	if (!zstr(arg) && *arg == '^' && *(arg+1) == '^') {
-		arg += 2;
-		delim = *arg++;
-	}
-
-	if (arg) {
-		int x, argc;
-		char *argv[10] = { 0 };
-		char *param[2] = { 0 };
-
-		arg = switch_core_session_strdup(session, arg);
-		argc = switch_split(arg, delim, argv);
-		
-		for (x = 0; x < argc; x++) {
-			
-			if (switch_separate_string(argv[x], '=', param, switch_arraylen(param)) == 2) {
-				int value = 0;
-				if (!strcasecmp(param[0], "initial_silence")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.initial_silence = value;
-					}
-				} else if (!strcasecmp(param[0], "greeting")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.greeting = value;
-					}
-				} else if (!strcasecmp(param[0], "after_greeting_silence")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.after_greeting_silence = value;
-					}
-				} else if (!strcasecmp(param[0], "total_analysis_time")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.total_analysis_time = value;
-					}
-				} else if (!strcasecmp(param[0], "min_word_length")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.minimum_word_length = value;
-					}
-				} else if (!strcasecmp(param[0], "between_words_silence")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.between_words_silence = value;
-					}
-				} else if (!strcasecmp(param[0], "maximum_number_of_words")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.maximum_number_of_words = value;
-					}
-				} else if (!strcasecmp(param[0], "maximum_word_length")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.maximum_word_length = value;
-					}
-				} else if (!strcasecmp(param[0], "silence_threshold")) {
-					if ((value = atoi(param[1])) > 0) {
-						vad.params.silence_threshold = value;
-					}
-				}
-				
-				if (value > 0) {
-					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_NOTICE, "AMD: Apply [%s]=[%d]\n", param[0], value);
-				} else {
-					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "AMD: Invalid [%s]=[%s]; Value must be positive integer only!\n", param[0], param[1]);
-					continue;
-				}
-			} else {
-				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "AMD: Ignore argument [%s]\n", argv[x]);
-			}
-		}
-	}
-	/* End: parsing argument(s) */
-	
 	switch_core_session_get_read_impl(session, &read_impl);
 
-	if (vad.params.total_analysis_time) {
-		sample_count_limit = (read_impl.actual_samples_per_second / 1000) * vad.params.total_analysis_time;
+	if (timeout_ms) {
+		sample_count_limit = (read_impl.actual_samples_per_second / 1000) * timeout_ms;
 	}
 
 	/*
@@ -445,6 +375,9 @@ SWITCH_STANDARD_APP(amd_start_function)
 	switch_core_session_set_read_codec(session, &raw_codec);
 
 	while (switch_channel_ready(channel)) {
+
+		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "AMD: in switch_channel_ready\n");
+
 		status = switch_core_session_read_frame(session, &read_frame, SWITCH_IO_FLAG_NONE, 0);
 
 		if (!SWITCH_READ_ACCEPTABLE(status)) {
@@ -452,9 +385,12 @@ SWITCH_STANDARD_APP(amd_start_function)
 		}
 
 		if (read_frame->samples == 0) {
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "AMD: in read_frame->samples\n");
 			if (sample_count_limit) {
 				sample_count_limit -= raw_codec.implementation->samples_per_packet;
 				if (sample_count_limit <= 0) {
+					switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_DEBUG, "AMD: Timeout\n");
+
 					switch_channel_set_variable(channel, "amd_result", "NOTSURE");
 					switch_channel_set_variable(channel, "amd_cause", "TOOLONG");
 					break;
@@ -476,7 +412,7 @@ SWITCH_STANDARD_APP(amd_start_function)
 			}
 		}
 
-		switch (classify_frame(vad.params.silence_threshold, read_frame, &read_impl)) {
+		switch (classify_frame(&vad, read_frame, &read_impl)) {
 		case SILENCE:
 			switch_log_printf(
 				SWITCH_CHANNEL_SESSION_LOG(session),
