@@ -505,7 +505,7 @@ SWITCH_STANDARD_APP(amd_start_function)
 		}
 	}
 
-	switch_channel_set_variable(channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( )));
+	switch_channel_set_variable(channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
 	
 	switch_core_session_reset(session, SWITCH_FALSE, SWITCH_TRUE);
 	switch_core_codec_destroy(&raw_codec);
