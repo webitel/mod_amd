@@ -446,7 +446,7 @@ SWITCH_STANDARD_APP(amd_start_function)
     vad->state = VAD_STATE_IN_WORD;
     vad->silence_duration = 0;
     vad->voice_duration = 0;
-    vad->frame_ms = 77;
+    vad->frame_ms = 0;
     vad->in_initial_silence = 1;
     vad->in_greeting = 0;
     vad->words = 0;
