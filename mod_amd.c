@@ -164,7 +164,6 @@ typedef struct amd_vad_c {
 
     uint32_t in_initial_silence:1;
     uint32_t in_greeting:1;
-    switch_bool_t test;
 } amd_vad_t;
 
 
@@ -173,19 +172,14 @@ static amd_frame_classifier classify_frame(uint32_t silence_threshold, const swi
     int16_t *audio = f->data;
     uint32_t score, count, j;
     double energy;
-    int divisor;
-
-    divisor = 1;//codec->actual_samples_per_second / 8000;
-    //printf("sps: %d\n", codec->actual_samples_per_second);
 
     for (energy = 0, j = 0, count = 0; count < f->samples; count++) {
         energy += abs(audio[j++]);
-        //j += codec->number_of_channels; //TODO
     }
 
-    score = (uint32_t) (energy / (f->samples / divisor));
-    //printf("score %d; rate: %d; samples %d; number_of_channels %d; datalen %d\n", score, codec->actual_samples_per_second,
-    //       f->samples, codec->number_of_channels, f->datalen);
+    score = (uint32_t) (energy / (f->samples));
+//    printf("score %d; rate: %d; samples %d; number_of_channels %d; datalen %d\n", score, codec->actual_samples_per_second,
+//           f->samples, codec->number_of_channels, f->datalen);
     if (score >= silence_threshold) {
         return VOICED;
     }
@@ -337,11 +331,10 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
         }
         case SWITCH_ABC_TYPE_CLOSE:
         {
-            if (!switch_channel_ready(vad->channel)) {
-                //printf("Channel close...\n");
-            } else {
-                const char *result = switch_channel_get_variable(vad->channel, "amd_result");
+            if (switch_channel_ready(vad->channel)) {
+                switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
 
+                const char *result = switch_channel_get_variable(vad->channel, "amd_result");
                 if (!strcasecmp(result, "MACHINE")) {
                     switch_channel_execute_on(vad->channel, "amd_on_machine");
                 } else if (!strcasecmp(result, "HUMAN")) {
@@ -355,8 +348,6 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                     SWITCH_CHANNEL_SESSION_LOG(vad->session),
                     SWITCH_LOG_DEBUG,
                     "AMD: close\n");
-
-            //printf("CLOSE\n");
             break;
         }
         case SWITCH_ABC_TYPE_READ_PING:
@@ -364,12 +355,6 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
             uint8_t data[SWITCH_RECOMMENDED_BUFFER_SIZE];
             switch_frame_t read_frame = { 0 };
             switch_status_t status;
-
-            if (!vad->test) {
-                switch_channel_execute_on(vad->channel, "amd_on_test");
-                printf("amd_on_test\n");
-                vad->test = SWITCH_TRUE;
-            }
 
             read_frame.data = data;
             read_frame.buflen = SWITCH_RECOMMENDED_BUFFER_SIZE;
@@ -435,7 +420,6 @@ SWITCH_STANDARD_APP(amd_start_function)
 
     amd_vad_t *vad = NULL;
     vad = switch_core_session_alloc(session, sizeof(*vad));
-
 
     if (!session) {
         return;
@@ -525,8 +509,6 @@ SWITCH_STANDARD_APP(amd_start_function)
         switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Can not record session.  Media not enabled on channel\n");
         return;
     }
-
-    //flags |= SMBF_STEREO;
 
     if (switch_core_media_bug_add(
             session,
