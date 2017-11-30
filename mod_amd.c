@@ -175,7 +175,7 @@ static amd_frame_classifier classify_frame(uint32_t silence_threshold, const swi
     double energy;
     int divisor;
 
-    divisor = codec->actual_samples_per_second / 8000;
+    divisor = 1;//codec->actual_samples_per_second / 8000;
     //printf("sps: %d\n", codec->actual_samples_per_second);
 
     for (energy = 0, j = 0, count = 0; count < f->samples; count++) {
@@ -184,7 +184,8 @@ static amd_frame_classifier classify_frame(uint32_t silence_threshold, const swi
     }
 
     score = (uint32_t) (energy / (f->samples / divisor));
-    //printf("score %d; samples %d; number_of_channels %d; datalen %d\n", score, f->samples, codec->number_of_channels, f->datalen);
+    //printf("score %d; rate: %d; samples %d; number_of_channels %d; datalen %d\n", score, codec->actual_samples_per_second,
+    //       f->samples, codec->number_of_channels, f->datalen);
     if (score >= silence_threshold) {
         return VOICED;
     }
