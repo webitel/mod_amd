@@ -335,12 +335,22 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                 switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
 
                 const char *result = switch_channel_get_variable(vad->channel, "amd_result");
-                if (!strcasecmp(result, "MACHINE")) {
-                    switch_channel_execute_on(vad->channel, "amd_on_machine");
-                } else if (!strcasecmp(result, "HUMAN")) {
-                    switch_channel_execute_on(vad->channel, "amd_on_human");
+                if (result != NULL) {
+                    if (!strcasecmp(result, "MACHINE")) {
+                        switch_channel_execute_on(vad->channel, "amd_on_machine");
+                    } else if (!strcasecmp(result, "HUMAN")) {
+                        switch_channel_execute_on(vad->channel, "amd_on_human");
+                    } else {
+                        switch_channel_execute_on(vad->channel, "amd_on_notsure");
+                    }
                 } else {
-                    switch_channel_execute_on(vad->channel, "amd_on_notsure");
+                    //TODO set error ?
+                    switch_log_printf(
+                            SWITCH_CHANNEL_SESSION_LOG(vad->session),
+                            SWITCH_LOG_WARNING,
+                            "No found variable amd_result set amd_result=NOTSURE\n");
+                    switch_channel_set_variable(vad->channel, "amd_result", "NOTSURE");
+                    switch_channel_set_variable(vad->channel, "amd_cause", "TOOLONG");
                 }
             }
 
@@ -361,8 +371,8 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
 
             status = switch_core_media_bug_read(bug, &read_frame, SWITCH_FALSE);
 
-            if (status != SWITCH_STATUS_SUCCESS || !read_frame.datalen) {
-                return SWITCH_FALSE;
+            if (status != SWITCH_STATUS_SUCCESS && status != SWITCH_STATUS_BREAK) {
+                return SWITCH_TRUE;
             }
 
             if (vad->sample_count_limit) {
@@ -522,6 +532,4 @@ SWITCH_STANDARD_APP(amd_start_function)
         switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Can not add media bug.  Media not enabled on channel\n");
         return;
     }
-
-    return;
 }
