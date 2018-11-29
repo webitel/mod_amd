@@ -30,6 +30,7 @@ To build module as a part of FreeSwitch source tree perform following steps:
 
 - Add it as a git submodule git submodule add --name webitel-mod_amd https://github.com/webitel/mod_amd src/mod/applications/mod_amd
 - Add  src/mod/applications/mod_amd/Makefile to AC_CONFIG_FILES of configure.ac
+- Add applications/mod_amd to modules.conf
 - Build entire FreeSwitch project or module only
 
 
