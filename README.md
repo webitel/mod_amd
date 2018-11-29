@@ -23,6 +23,16 @@ host$ export PKG_CONFIG_PATH=/usr/local/freeswitch/lib/pkgconfig/
 host$ make
 ```
 
+Building as a part of FreeSwitch source tree
+--------------------
+
+To build module as a part of FreeSwitch source tree perform following steps:
+
+- Add it as a git submodule git submodule add --name webitel-mod_amd https://github.com/webitel/mod_amd src/mod/applications/mod_amd
+- Add  src/mod/applications/mod_amd/Makefile to AC_CONFIG_FILES of configure.ac
+- Build entire FreeSwitch project or module only
+
+
 Sample Configuration
 --------------------
 
