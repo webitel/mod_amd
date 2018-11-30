@@ -319,6 +319,7 @@ static switch_bool_t amd_handle_voiced_frame(amd_vad_t *vad, const switch_frame_
 static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user_data, switch_abc_type_t type)
 {
     struct amd_vad_c *vad = (struct amd_vad_c *) user_data;
+    const char *result = NULL;
 
     switch (type) {
         case SWITCH_ABC_TYPE_INIT:
@@ -334,7 +335,7 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
             if (switch_channel_ready(vad->channel)) {
                 switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
 
-                const char *result = switch_channel_get_variable(vad->channel, "amd_result");
+                result = switch_channel_get_variable(vad->channel, "amd_result");
                 if (result != NULL) {
                     if (!strcasecmp(result, "MACHINE")) {
                         switch_channel_execute_on(vad->channel, "amd_on_machine");
