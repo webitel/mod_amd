@@ -346,16 +346,9 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
         {
             if (switch_channel_ready(vad->channel)) {
                 const char *result = NULL;
-                const char *cause = NULL;
                 switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
 
                 result = switch_channel_get_variable(vad->channel, "amd_result");
-                cause = switch_channel_get_variable(vad->channel, "amd_cause");
-
-                switch_log_printf(
-                        SWITCH_CHANNEL_SESSION_LOG(vad->session),
-                        SWITCH_LOG_ERROR,
-                        "CAUSE %s\n", cause);
 
                 if (result != NULL) {
                     if (!strcasecmp(result, "MACHINE")) {
