@@ -20,6 +20,7 @@ typedef struct {
     uint32_t maximum_number_of_words;
     uint32_t maximum_word_length;
     uint32_t silence_threshold;
+    uint32_t silence_notsure;
 } amd_params_t;
 
 static amd_params_t globals;
@@ -95,6 +96,14 @@ static switch_xml_config_item_t instructions[] = {
                 CONFIG_RELOADABLE,
                 &globals.silence_threshold,
                 (void *) 256,
+                NULL, NULL, NULL),
+
+        SWITCH_CONFIG_ITEM(
+                "silence_notsure",
+                SWITCH_CONFIG_INT,
+                CONFIG_RELOADABLE,
+                &globals.silence_notsure,
+                (void *) 0,
                 NULL, NULL, NULL),
 
         SWITCH_CONFIG_ITEM_END()
@@ -204,14 +213,18 @@ static switch_bool_t amd_handle_silence_frame(amd_vad_t *vad, const switch_frame
     }
 
     if (vad->in_initial_silence && vad->silence_duration >= vad->params.initial_silence) {
+        const char *result = (vad->params.silence_notsure > 0) ? "NOTSURE" : "MACHINE";
+
         switch_log_printf(
                 SWITCH_CHANNEL_SESSION_LOG(vad->session),
                 SWITCH_LOG_DEBUG,
-                "AMD: MACHINE (silence_duration: %d, initial_silence: %d)\n",
+                "AMD: %s (silence_duration: %d, initial_silence: %d, silence_notsure: %d)\n",
+                result,
                 vad->silence_duration,
-                vad->params.initial_silence);
+                vad->params.initial_silence,
+                vad->params.silence_notsure);
 
-        switch_channel_set_variable(vad->channel, "amd_result", "MACHINE");
+        switch_channel_set_variable(vad->channel, "amd_result", result);
         switch_channel_set_variable(vad->channel, "amd_cause", "INITIALSILENCE");
         return SWITCH_TRUE;
     }
@@ -319,7 +332,6 @@ static switch_bool_t amd_handle_voiced_frame(amd_vad_t *vad, const switch_frame_
 static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user_data, switch_abc_type_t type)
 {
     struct amd_vad_c *vad = (struct amd_vad_c *) user_data;
-    const char *result = NULL;
 
     switch (type) {
         case SWITCH_ABC_TYPE_INIT:
@@ -333,9 +345,18 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
         case SWITCH_ABC_TYPE_CLOSE:
         {
             if (switch_channel_ready(vad->channel)) {
+                const char *result = NULL;
+                const char *cause = NULL;
                 switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
 
                 result = switch_channel_get_variable(vad->channel, "amd_result");
+                cause = switch_channel_get_variable(vad->channel, "amd_cause");
+
+                switch_log_printf(
+                        SWITCH_CHANNEL_SESSION_LOG(vad->session),
+                        SWITCH_LOG_ERROR,
+                        "CAUSE %s\n", cause);
+
                 if (result != NULL) {
                     if (!strcasecmp(result, "MACHINE")) {
                         switch_channel_execute_on(vad->channel, "amd_on_machine");
@@ -500,6 +521,10 @@ SWITCH_STANDARD_APP(amd_start_function)
                 } else if (!strcasecmp(param[0], "silence_threshold")) {
                     if ((value = atoi(param[1])) > 0) {
                         vad->params.silence_threshold = value;
+                    }
+                } else if (!strcasecmp(param[0], "silence_notsure")) {
+                    if ((value = atoi(param[1])) > 0) {
+                        vad->params.silence_notsure = 1;
                     }
                 }
 
