@@ -4,6 +4,7 @@
 #define AMD_SYNTAX "<uuid> <command>"
 
 #define BUG_AMD_NAME_READ "amd_read"
+#define AMD_EVENT_NAME "amd::info"
 
 SWITCH_MODULE_SHUTDOWN_FUNCTION(mod_amd_shutdown);
 SWITCH_MODULE_LOAD_FUNCTION(mod_amd_load);
@@ -329,6 +330,17 @@ static switch_bool_t amd_handle_voiced_frame(amd_vad_t *vad, const switch_frame_
     return SWITCH_FALSE;
 }
 
+static void amd_fire_event(switch_channel_t *channel) {
+    switch_event_t      *event;
+    switch_status_t     status;
+    status = switch_event_create_subclass(&event, SWITCH_EVENT_CLONE, AMD_EVENT_NAME);
+    if (status != SWITCH_STATUS_SUCCESS) {
+        return;
+    }
+    switch_channel_event_set_data(channel, event);
+    switch_event_fire(&event);
+}
+
 static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user_data, switch_abc_type_t type)
 {
     struct amd_vad_c *vad = (struct amd_vad_c *) user_data;
@@ -346,20 +358,12 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
         {
             if (switch_channel_ready(vad->channel)) {
                 const char *result = NULL;
-                switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_time_now( ) / 1000000 ));
+                switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_micro_time_now( ) / 1000000 ));
 
                 result = switch_channel_get_variable(vad->channel, "amd_result");
-
-                if (result != NULL) {
-                    if (!strcasecmp(result, "MACHINE")) {
-                        switch_channel_execute_on(vad->channel, "amd_on_machine");
-                    } else if (!strcasecmp(result, "HUMAN")) {
-                        switch_channel_execute_on(vad->channel, "amd_on_human");
-                    } else {
-                        switch_channel_execute_on(vad->channel, "amd_on_notsure");
-                    }
-                } else {
+                if (result == NULL) {
                     //TODO set error ?
+                    result = "NOTSURE";
                     switch_log_printf(
                             SWITCH_CHANNEL_SESSION_LOG(vad->session),
                             SWITCH_LOG_WARNING,
@@ -367,6 +371,15 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                     switch_channel_set_variable(vad->channel, "amd_result", "NOTSURE");
                     switch_channel_set_variable(vad->channel, "amd_cause", "TOOLONG");
                 }
+
+                if (!strcasecmp(result, "MACHINE")) {
+                    switch_channel_execute_on(vad->channel, "amd_on_machine");
+                } else if (!strcasecmp(result, "HUMAN")) {
+                    switch_channel_execute_on(vad->channel, "amd_on_human");
+                } else {
+                    switch_channel_execute_on(vad->channel, "amd_on_notsure");
+                }
+                amd_fire_event(vad->channel);
             }
 
             switch_log_printf(
