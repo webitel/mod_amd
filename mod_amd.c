@@ -188,8 +188,6 @@ static amd_frame_classifier classify_frame(uint32_t silence_threshold, const swi
     }
 
     score = (uint32_t) (energy / (f->samples));
-//    printf("score %d; rate: %d; samples %d; number_of_channels %d; datalen %d\n", score, codec->actual_samples_per_second,
-//           f->samples, codec->number_of_channels, f->datalen);
     if (score >= silence_threshold) {
         return VOICED;
     }
@@ -341,6 +339,44 @@ static void amd_fire_event(switch_channel_t *channel) {
     switch_event_fire(&event);
 }
 
+static void do_execute(switch_core_session_t *session, switch_channel_t *channel, const char *name) {
+    char *arg = NULL;
+    char *p;
+    int bg = 0;
+    const char *variable = switch_channel_get_variable(channel, name);
+    char *expanded = NULL;
+    char *app = NULL;
+
+    if (!variable) {
+        return;
+    }
+
+    expanded = switch_channel_expand_variables(channel, variable);
+    app = switch_core_session_strdup(session, expanded);
+
+    for(p = app; p && *p; p++) {
+        if (*p == ' ' || (*p == ':' && (*(p+1) != ':'))) {
+            *p++ = '\0';
+            arg = p;
+            break;
+        } else if (*p == ':' && (*(p+1) == ':')) {
+            bg++;
+            break;
+        }
+    }
+
+    switch_assert(app != NULL);
+    if (!strncasecmp(app, "perl", 4)) {
+        bg++;
+    }
+
+    if (bg) {
+        switch_core_session_execute_application_async(session, app, arg);
+    } else {
+        switch_core_session_execute_application(session, app, arg);
+    }
+}
+
 static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user_data, switch_abc_type_t type)
 {
     struct amd_vad_c *vad = (struct amd_vad_c *) user_data;
@@ -373,11 +409,11 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                 }
 
                 if (!strcasecmp(result, "MACHINE")) {
-                    switch_channel_execute_on(vad->channel, "amd_on_machine");
+                    do_execute(vad->session, vad->channel, "amd_on_machine");
                 } else if (!strcasecmp(result, "HUMAN")) {
-                    switch_channel_execute_on(vad->channel, "amd_on_human");
+                    do_execute(vad->session, vad->channel, "amd_on_human");
                 } else {
-                    switch_channel_execute_on(vad->channel, "amd_on_notsure");
+                    do_execute(vad->session, vad->channel, "amd_on_machine");
                 }
                 amd_fire_event(vad->channel);
             }
