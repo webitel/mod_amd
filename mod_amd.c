@@ -408,14 +408,15 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                     switch_channel_set_variable(vad->channel, "amd_cause", "TOOLONG");
                 }
 
+                amd_fire_event(vad->channel);
+
                 if (!strcasecmp(result, "MACHINE")) {
                     do_execute(vad->session, vad->channel, "amd_on_machine");
                 } else if (!strcasecmp(result, "HUMAN")) {
                     do_execute(vad->session, vad->channel, "amd_on_human");
                 } else {
-                    do_execute(vad->session, vad->channel, "amd_on_machine");
+                    do_execute(vad->session, vad->channel, "amd_on_notsure");
                 }
-                amd_fire_event(vad->channel);
             }
 
             switch_log_printf(
@@ -457,7 +458,7 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                             SWITCH_CHANNEL_SESSION_LOG(vad->session),
                             SWITCH_LOG_DEBUG,
                             "AMD: Silence\n");
-                    if (amd_handle_silence_frame(vad, &read_frame)) {
+                    if (amd_handle_silence_frame(vad, &read_frame) == SWITCH_TRUE) {
                         return SWITCH_FALSE;
                     }
                     break;
@@ -467,7 +468,7 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                             SWITCH_CHANNEL_SESSION_LOG(vad->session),
                             SWITCH_LOG_DEBUG,
                             "AMD: Voiced\n");
-                    if (amd_handle_voiced_frame(vad, &read_frame)) {
+                    if (amd_handle_voiced_frame(vad, &read_frame) == SWITCH_TRUE) {
                         return SWITCH_FALSE;
                     }
                     break;
