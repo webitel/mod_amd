@@ -392,9 +392,9 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
         }
         case SWITCH_ABC_TYPE_CLOSE:
         {
+            switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_micro_time_now( ) / 1000000 ));
             if (switch_channel_ready(vad->channel)) {
                 const char *result = NULL;
-                switch_channel_set_variable(vad->channel, "amd_result_epoch", switch_mprintf( "%" SWITCH_TIME_T_FMT, switch_micro_time_now( ) / 1000000 ));
 
                 result = switch_channel_get_variable(vad->channel, "amd_result");
                 if (result == NULL) {
@@ -416,6 +416,15 @@ static switch_bool_t amd_read_audio_callback(switch_media_bug_t *bug, void *user
                     do_execute(vad->session, vad->channel, "amd_on_human");
                 } else {
                     do_execute(vad->session, vad->channel, "amd_on_notsure");
+                }
+            } else {
+                if (!switch_channel_get_variable(vad->channel, "amd_result")) {
+                    switch_log_printf(
+                            SWITCH_CHANNEL_SESSION_LOG(vad->session),
+                            SWITCH_LOG_DEBUG,
+                            "No found variable amd_result set amd_result=CANCEL\n");
+                    switch_channel_set_variable(vad->channel, "amd_result", "CANCEL");
+                    switch_channel_set_variable(vad->channel, "amd_cause", "CANCEL");
                 }
             }
 
